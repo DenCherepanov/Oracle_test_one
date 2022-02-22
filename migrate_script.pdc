@@ -1,0 +1,376 @@
+﻿set feedback off
+set autoprint off
+set serveroutput on size unlimited
+set concat off
+set echo off
+set serveroutput on size '1000000'
+whenever sqlerror exit
+
+prompt ============================================================================================
+prompt   Скрипт миграции
+prompt ============================================================================================
+
+prompt ============================================================================================
+prompt   Модификация, добавление данных
+prompt ============================================================================================
+
+prompt Создание таблицы OPERATION...
+declare
+  cnt number;
+begin
+  select count(*) into cnt from all_tables where table_name = 'OPERATION' and owner = 'SYSTEM';
+  if cnt = 0 then
+    execute immediate 'create table SYSTEM.OPERATION (
+                           ID number not null,
+                         NAME varchar(50) not null,
+                         TYPE varchar(10) not null)';
+    execute immediate 'comment on table SYSTEM.OPERATION is ''Операции''';
+    execute immediate 'comment on column SYSTEM.OPERATION.ID is ''ИД операции''';
+    execute immediate 'comment on column SYSTEM.OPERATION.NAME is ''Наименование операции''';
+    execute immediate 'comment on column SYSTEM.OPERATION.TYPE is ''Тип операции''';    
+    
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (1, ''Первая'', ''MAIN'')';
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (2, ''Вторая'', ''MAIN'')';    
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (3, ''Простая'', ''CHILD'')';
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (4, ''Незначительная'', ''CHILD'')';    
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (5, ''Несущественная'', ''CHILD'')';
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (6, ''Легкая'', ''CHILD'')';    
+    execute immediate 'insert into SYSTEM.OPERATION (id, name, type) VALUES (7, ''Подчиненная'', ''CHILD'')';        
+    commit;
+    dbms_output.put_line('... таблица OPERATION создана');
+  else
+    dbms_output.put_line('... таблица OPERATION уже существует');
+  end if;
+end;
+/
+prompt Создание таблицы OPERATION... ok
+
+prompt Создание таблицы OPERATION_PRIORITY...
+declare
+  cnt number;
+begin
+  select count(*) into cnt from all_tables where table_name = 'OPERATION_PRIORITY' and owner = 'SYSTEM';
+  if cnt = 0 then
+    execute immediate 'create table SYSTEM.OPERATION_PRIORITY (
+                      OPER_ID number not null,
+                MAIN_POSITION number not null,
+               CHILD_POSITION number not null,
+                OPER_POSITION number not null)';
+    execute immediate 'comment on table SYSTEM.OPERATION_PRIORITY is ''Приоритеты операций''';
+    execute immediate 'comment on column SYSTEM.OPERATION_PRIORITY.OPER_ID is ''ИД операции''';
+    execute immediate 'comment on column SYSTEM.OPERATION_PRIORITY.MAIN_POSITION is ''Приоритет основной операции''';
+    execute immediate 'comment on column SYSTEM.OPERATION_PRIORITY.CHILD_POSITION is ''Приоритет дочерней операции внутри основной''';    
+    execute immediate 'comment on column SYSTEM.OPERATION_PRIORITY.OPER_POSITION is ''Сквозной приоритет в общем списке операций''';    
+    
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (7, 1, -2, 1)';
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (3, 1, -1, 2)';    
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (1, 1, 0, 3)';
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (4, 1, 1, 4)';    
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (2, 2, 0, 5)';
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (5, 2, 1, 6)';    
+    execute immediate 'insert into SYSTEM.OPERATION_PRIORITY (OPER_ID, MAIN_POSITION, CHILD_POSITION, OPER_POSITION) VALUES (6, 2, 2, 7)';        
+    commit;
+    dbms_output.put_line('... таблица OPERATION_PRIORITY создана');
+  else
+    dbms_output.put_line('... таблица OPERATION_PRIORITY уже существует');
+  end if;
+end;
+/
+prompt Создание таблицы OPERATION_PRIORITY... ok
+
+prompt Добавление первичного и внешнего ключей на таблицы SYSTEM.OPERATION и SYSTEM.OPERATION_PRIORITY...
+declare
+  cnt number;
+begin
+ select count(*) into cnt from all_constraints
+  where owner = 'SYSTEM'
+    and table_name = 'OPERATION_PRIORITY'
+    and constraint_name= 'OPERATION_PRIORITY_FK_OPER_ID';
+ if cnt = 0 then
+   execute immediate 
+     'alter table OPERATION
+      add constraint OPERATION_PK_ID primary key (ID)';
+   execute immediate 
+     'alter table OPERATION_PRIORITY
+      add constraint OPERATION_PRIORITY_FK_OPER_ID foreign key (OPER_ID)
+      references OPERATION (id)';    
+ end if;  
+end;  
+/  
+prompt Добавление первичного и внешнего ключей на таблицы SYSTEM.OPERATION и SYSTEM.OPERATION_PRIORITY... ok
+
+prompt ============================================================================================
+prompt   Модификация, создание пакетов
+prompt ============================================================================================
+
+prompt Создание, изменение пакета pkgTest...
+create or replace package system.pkgTest is
+  -- ассоциативный массив
+  type tNumTbl is table of number index by pls_integer;
+
+  -- функция, возвращающая минимальное значение из непустых элементов pVal
+  function get_min(pVal tNumTbl) return number;
+
+  -- функция, возвращающая таблицу (tNumTbl) уникальных чисел из pVal1, pVal2,
+  -- включая пустое значение, если таковое встретилось
+  function get_unique(pVal1 tNumTbl, pVal2 tNumTbl) return tNumTbl;
+
+  -- процедура, заполняющая коллекцию pVal2 уникальными значениями коллекции pVal1
+  procedure fill_collection(pVal1 in tNumTbl, pVal2 in out tNumTbl);
+
+  -- функция, проверяющая наличие элемента в коллекции pVal со значением nVal
+  function find_value(pVal tNumTbl, nVal number) return boolean;
+
+  -- функция, возвращающая курсор с наименованиями основных операций
+  function get_oper_list return sys_refcursor;
+  
+  -- процедура для изменения приоритета указанной операции, pID - ид операции, pInc (true - повысить, false - понизить)
+  procedure change_position(pID number, pInc boolean);
+    
+  -- фукнция для определения возможности изменения приоритета.
+  -- если изменение возможно, возвращает oper_id, иначе 0
+  function can_change_position (pOP number, pIncDec number, pTO number) return number;
+  
+  -- процедура для сбора информации по ид операции
+  procedure get_info (pID number, pMP in out number, pCP in out number, pOP in out number, pTO in out number, pCnt in out number);   
+end pkgTest;
+/
+
+create or replace package body system.pkgTest is
+  -- функция, возвращающая минимальное значение из непустых элементов pVal
+  function get_min (pVal tNumTbl) return number is
+    result number;
+    i pls_integer;
+  begin
+    result := null;
+    i := pVal.first;
+
+    while (i is not null)
+    loop
+      if pVal(i) is not null then
+        if result is not null then
+          if pVal(i) < result then
+            result := pVal(i);
+          end if;
+        else
+          result := pVal(i);
+        end if;
+      end if;
+      i := pVal.next (i);
+    end loop;
+
+    return result;
+  end;
+
+  -- функция, возвращающая таблицу (tNumTbl) уникальных чисел из pVal1, pVal2,
+  -- включая пустое значение, если таковое встретилось
+  function get_unique(pVal1 tNumTbl, pVal2 tNumTbl) return tNumTbl is
+    pVal3 tNumTbl;
+  begin
+    pkgtest.fill_collection(pVal1, pVal3);
+    pkgtest.fill_collection(pVal2, pVal3);
+
+    return pVal3;
+  end;
+
+  -- процедура, заполняющая коллекцию pVal2 уникальными значениями коллекции pVal1
+  procedure fill_collection(pVal1 in tNumTbl, pVal2 in out tNumTbl) is
+    i pls_integer;
+    j pls_integer;
+  begin
+    i := pVal1.first;
+    if pVal2.count > 0 then
+      j := pVal2.last + 1;
+    else
+      pVal2(1) := pVal1(i);
+      j := 1;
+    end if;
+
+    while (i is not null)
+    loop
+      if pkgtest.find_value(pVal2, pVal1(i)) = false then
+        j := j + 1;
+        pVal2(j) := pVal1(i);
+      end if;
+      i := pVal1.next (i);
+    end loop;
+  end;
+
+  -- функция, проверяющая наличие элемента в коллекции pVal со значением nVal
+  function find_value(pVal tNumTbl, nVal number) return boolean is
+    result boolean;
+    i pls_integer;
+  begin
+    i := pVal.first;
+    result := false;
+
+    while (i is not null)
+    loop
+      if nvl(pVal(i),0) = nvl(nVal,0) then
+        result := true;
+      end if;
+      i := pVal.next (i);
+    end loop;
+
+    return result;
+  end;
+
+  -- функция, возвращающая курсор с наименованиями основных операций
+  function get_oper_list return sys_refcursor is
+     pRef sys_refcursor;
+  begin
+    open pRef for
+    select a.name
+    from (with cr1
+          as (
+          -- выбираем основные операции и количество дочерних с меньшим приоритетом 
+          select a.id, a.main_position,
+                 (select count(t2.oper_id) from system.operation_priority t2
+                  where t2.main_position = a.main_position
+                    and t2.oper_id <> a.id
+                    and t2.child_position < a.child_position) as cnt
+          from (select t1.id, t2.main_position, t2.child_position
+                from system.operation t1
+                inner join system.operation_priority t2 on t2.oper_id = t1.id
+                where t1.type = 'MAIN') a
+          union all
+          -- выбираем основные операции и количество дочерних с большим приоритетом           
+          select a.id, a.main_position,
+                 (select count(t2.oper_id) from system.operation_priority t2
+                  where t2.main_position = a.main_position
+                    and t2.oper_id <> a.id
+                    and t2.child_position > a.child_position) as cnt
+          from (select t1.id, t2.main_position, t2.child_position
+                from system.operation t1
+                inner join system.operation_priority t2 on t2.oper_id = t1.id
+                where t1.type = 'MAIN') a
+          )
+          -- выбираем список основных операций, у которых количество связанных дочерних операций с приоритетом выше, чем у основной, 
+          -- равно количеству связанных дочерних операций с приоритетом ниже, чем у основной, отсортированный в порядке приоритета полученных операций. 
+          select distinct t4.name, t1.main_position
+          from cr1 t1
+          inner join system.operation t4 on t4.id = t1.id
+          where exists (select * from cr1 t2
+                        where t1.cnt = t2.cnt
+                          and t1.id <> t2.id
+                          and t1.cnt <> 0)) a
+    order by a.main_position;
+
+    return pRef;
+  end;
+  
+  -- процедура для изменения приоритета указанной операции, pID - ид операции, pInc (true - повысить, false - понизить)
+  procedure change_position(pID number, pInc boolean) is
+    pID_1   number;
+    pMP_1   number;
+    pCP_1   number;    
+    pOP_1   number;
+    pTO_1   number;
+    pCnt_1  number;
+    pID_2   number;    
+    pMP_2   number;
+    pCP_2   number;    
+    pOP_2   number;
+    pTO_2   number;
+    pCnt_2  number;
+    pIncDec number;
+  begin
+    -- увеличиваем или уменьшаем приоритет
+    pIncDec := case when pInc then -1 else 1 end;
+    
+    -- сбор информации об операции, приоритет которой будет изменен
+    pkgtest.get_info(pID, pMP_1, pCP_1, pOP_1, pTO_1, pCnt_1);
+    
+    -- для общего формата используемых переменных
+    pID_1 := pID;
+    
+    -- проверка, возможно ли изменение приоритета
+    select pkgtest.can_change_position(pOP_1, pIncDec, pTO_1) 
+    into pID_2
+    from dual;
+
+    -- если изменение приоритета операции возможно
+    if pID_2 > 0 then
+      -- сбор информации об операции, с которой будет производится обмен приоритетом
+      pkgtest.get_info(pID_2, pMP_2, pCP_2, pOP_2, pTO_2, pCnt_2);
+      
+      -- обновление данных 
+      update system.operation_priority t set
+             t.main_position  = (case when pTO_1 = 1 and pMP_1 <> pMP_2 and t.oper_position = pOP_1 then pMP_2
+                                      else t.main_position
+                                 end),
+             t.child_position = (case when pTO_1 = 1 and pTO_2 = 1 and t.oper_id = pID_1 then pCP_2   
+                                      when pTO_1 = 1 and pTO_2 = 1 and t.oper_id = pID_2 then pCP_2 - pIncDec
+                                      when pTO_1 = 1 and pTO_2 = 0 and t.oper_id = pID_1 then pIncDec
+                                      when pTO_1 = 1 and pTO_2 = 0 and t.oper_id <> pID_1 and t.child_position <> 0 then t.child_position + pIncDec                                        
+                                      else t.child_position
+                                 end),                                 
+             t.oper_position  = (case when pTO_1 = 1 and t.oper_id = pID_1 then pOP_2               
+                                      when pTO_1 = 1 and t.oper_id = pID_2 then pOP_1
+                                      when pTO_1 = 0 and t.main_position = pMP_1 then t.oper_position + (pCnt_2 * pIncDec)
+                                      when pTO_1 = 0 and t.main_position = pMP_2 then t.oper_position - (pCnt_1 * pIncDec) 
+                                      else t.oper_position                                         
+                                 end)
+      where (t.oper_position in (pOP_1, pOP_2) and pTO_1 = 1 and pTO_2 = 1) or
+            (t.main_position in (pMP_1, pMP_2) and pTO_1 = 0) or
+            (t.oper_position in (select t.oper_position 
+                                 from system.operation_priority t 
+                                 where t.main_position = pMP_2
+                                 union all
+                                 select pOP_1 from dual) and pTO_1 = 1 and pTO_2 = 0);  
+      commit;      
+    end if;                      
+  end;     
+      
+  -- фукнция для определения возможности изменения приоритета.
+  -- если изменение возможно, возвращает oper_id, иначе 0
+  function can_change_position (pOP number, pIncDec number, pTO number) return number is
+    pCnt number;
+  begin 
+    begin
+      select a.cnt
+      into pCnt
+      from (select distinct case when pIncDec = 1 then first_value (t.oper_id) over (order by t.oper_position)
+                                 else first_value (t.oper_id) over (order by t.oper_position desc)
+                            end as cnt
+            from system.operation_priority t 
+            where (((t.oper_position > pOP and pIncDec = 1) or 
+                    (t.oper_position < pOP and pIncDec = -1)) and t.child_position = 0 and pTO = 0) or
+                  (((t.oper_position > pOP and pIncDec = 1) or 
+                    (t.oper_position < pOP and pIncDec = -1)) and pTO = 1)) a;
+    exception
+      when no_data_found then
+	      return 0;
+    end;                   
+    
+    return pCnt;
+  end; 
+  
+  -- процедура для сбора информации по ид операции
+  procedure get_info (pID number, pMP in out number, pCP in out number, pOP in out number, pTO in out number, pCnt in out number) is
+  begin
+    select t1.main_position, t1.child_position, t1.oper_position, 
+           case when t2.type = 'MAIN' then 0
+                else 1
+           end       
+    into pMP, pCP, pOP, pTO
+    from system.operation_priority t1
+    inner join system.operation t2 on t2.id = t1.oper_id    
+    where t1.oper_id = pID;
+    
+    select count(t.oper_id)
+    into pCnt
+    from system.operation_priority t
+    where t.main_position = pMP;
+  end; 
+end pkgTest;
+/
+
+prompt Перекомпилируем пакет...
+alter package pkgTest compile;
+
+prompt Создание, изменение пакета pkgTest...ok
+
+prompt ============================================================================================
+prompt   Миграция завершена
+prompt ============================================================================================
